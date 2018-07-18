@@ -36,7 +36,7 @@ public class AppTextToSpeech {
         if(tts != null) {
             tts.stop();
             tts.shutdown();
-            Log.d("LOG", "TTS Destroyed");
+            Log.d("LOG", "TTS Destroyed.");
         }
     }
 
