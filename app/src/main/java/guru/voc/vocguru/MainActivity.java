@@ -9,6 +9,8 @@ import android.support.annotation.RequiresApi;
 import android.support.v7.app.AppCompatActivity;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -16,19 +18,27 @@ import android.widget.Toast;
 
 public class MainActivity extends AppCompatActivity {
 
+    public static final int ACTIVITY_RETURN_CODE_ERROR_NO_INTERNET = 0;
+
+    public static final int ACTIVITY_RETURN_CODE_REQUEST_SELECT_FILE = 100;
+
+    public static final int ACTIVITY_RETURN_CODE_FILECHOOSER_RESULTCODE = 1;
+
     private WebView webView;
     private AppTextToSpeech appTTS;
+    private DetectConnection detectConnection;
 
 
     private ValueCallback<Uri> mUploadMessage;
     public ValueCallback<Uri[]> uploadMessage;
-    public static final int REQUEST_SELECT_FILE = 100;
-    private final static int FILECHOOSER_RESULTCODE = 1;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        appTTS = new AppTextToSpeech(this);
+        detectConnection = new DetectConnection(this);
         setContentView(R.layout.activity_main);
 
         webView = findViewById(R.id.mainView);
@@ -45,27 +55,47 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setAllowFileAccess(true);
         //webSettings.setCacheMode(LOAD_NO_CACHE);
 
-
-        appTTS = new AppTextToSpeech(this);
         webView.addJavascriptInterface(appTTS, "speechSynthesis");
-        webView.loadUrl("https://voc.guru");
-        //webView.loadUrl("https://voc.guru:9080");
-        //webView.loadUrl("http://10.0.2.2:8082/");
+
+        if (!detectConnection.connected()) {
+            noInternetError();
+
+        } else {
+            webView.loadUrl("https://voc.guru");
+            //webView.loadUrl("https://voc.guru:9080");
+            //webView.loadUrl("http://10.0.2.2:8082/");
+        }
+    }
+
+    private void noInternetError() {
+        Toast.makeText(this, "Пожалуйста включите интернет!", Toast.LENGTH_LONG).show();
+
+        Intent intent = new Intent(this, NoInternetErrorActivity.class);
+        startActivityForResult(intent, ACTIVITY_RETURN_CODE_ERROR_NO_INTERNET);
     }
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent intent)
     {
+
+        if (requestCode == ACTIVITY_RETURN_CODE_ERROR_NO_INTERNET) {
+            if (!detectConnection.connected()) {
+                noInternetError();
+            } else {
+                webView.loadUrl("https://voc.guru");
+            }
+        }
+
+        // file upload code (!)
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            if (requestCode == REQUEST_SELECT_FILE)
+            if (requestCode == ACTIVITY_RETURN_CODE_REQUEST_SELECT_FILE)
             {
                 if (uploadMessage == null)
                     return;
                 uploadMessage.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, intent));
                 uploadMessage = null;
             }
-        }
-        else if (requestCode == FILECHOOSER_RESULTCODE) {
+        } else if (requestCode == ACTIVITY_RETURN_CODE_FILECHOOSER_RESULTCODE) {
             if (null == mUploadMessage)
                 return;
             // Use MainActivity.RESULT_OK if you're implementing WebView inside Fragment
@@ -74,9 +104,9 @@ public class MainActivity extends AppCompatActivity {
             mUploadMessage.onReceiveValue(result);
             mUploadMessage = null;
         }
-        else {
-            Toast.makeText(this.getApplicationContext(), "Failed to Upload Image", Toast.LENGTH_LONG).show();
-        }
+
+
+
     }
 
     private class AppChromeClient extends WebChromeClient {
@@ -95,7 +125,7 @@ public class MainActivity extends AppCompatActivity {
             Intent i = new Intent(Intent.ACTION_GET_CONTENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("image/*");
-            startActivityForResult(Intent.createChooser(i, "File Browser"), FILECHOOSER_RESULTCODE);
+            startActivityForResult(Intent.createChooser(i, "File Browser"), ACTIVITY_RETURN_CODE_FILECHOOSER_RESULTCODE);
         }
 
 
@@ -113,7 +143,7 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = fileChooserParams.createIntent();
             try
             {
-                startActivityForResult(intent, REQUEST_SELECT_FILE);
+                startActivityForResult(intent, ACTIVITY_RETURN_CODE_REQUEST_SELECT_FILE);
             } catch (ActivityNotFoundException e)
             {
                 uploadMessage = null;
@@ -130,7 +160,7 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("image/*");
-            startActivityForResult(Intent.createChooser(intent, "File Browser"), FILECHOOSER_RESULTCODE);
+            startActivityForResult(Intent.createChooser(intent, "File Browser"), ACTIVITY_RETURN_CODE_FILECHOOSER_RESULTCODE);
         }
 
         protected void openFileChooser(ValueCallback<Uri> uploadMsg)
@@ -139,7 +169,7 @@ public class MainActivity extends AppCompatActivity {
             Intent i = new Intent(Intent.ACTION_GET_CONTENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("image/*");
-            startActivityForResult(Intent.createChooser(i, "File Chooser"), FILECHOOSER_RESULTCODE);
+            startActivityForResult(Intent.createChooser(i, "File Chooser"), ACTIVITY_RETURN_CODE_FILECHOOSER_RESULTCODE);
         }
 
     }
@@ -202,6 +232,18 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             startActivity(intent);
             return true;
+        }
+
+        @Override
+        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (error.getErrorCode() == WebViewClient.ERROR_HOST_LOOKUP
+                        && error.getErrorCode() == WebViewClient.ERROR_CONNECT) {
+                    noInternetError();
+                }
+            } else {
+                noInternetError();
+            }
         }
     }
 }
